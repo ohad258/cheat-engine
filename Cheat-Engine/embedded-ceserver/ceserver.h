@@ -14,6 +14,10 @@
 #include "embedded.h"
 
 #define CE_SERVER_MAX_PROCESS_AMOUNT (2048)
+/* TODO: shitting on the stack... optimize it */
+#define CE_SERVER_MAX_PROCESS_NAME_LENGTH (255)
+/* TODO: no modules currently */
+#define CE_SERVER_MAX_MODULE_NAME_LENGTH (0)
 
 #define CMD_GETVERSION 0
 #define CMD_CLOSECONNECTION 1
@@ -77,7 +81,7 @@ typedef struct {
     int result;
     int pid;
     int processnamesize;
-    //processname
+    unsigned char processname[CE_SERVER_MAX_PROCESS_NAME_LENGTH];
 } CeProcessEntry, *PCeProcessEntry;
 
 typedef struct {
@@ -85,8 +89,7 @@ typedef struct {
     int64_t modulebase;
     int modulesize;
     int modulenamesize;
-    //modulename
-
+    unsigned char processname[CE_SERVER_MAX_MODULE_NAME_LENGTH];
 } CeModuleEntry, *PCeModuleEntry;
 
 typedef struct {
@@ -242,13 +245,14 @@ typedef struct {
 
 #pragma pack()
 
+/* TODO: remove both */
 ssize_t sendall (int s, void *buf, size_t size, int flags);
 ssize_t recvall (int s, void *buf, size_t size, int flags);
 int DispatchCommand(int currentsocket, unsigned char command);
 int CheckForAndDispatchCommand(int currentsocket);
 
 EMBEDDED__rc_t CE_SERVER__handle_command(uint8_t command_id);
-EMBEDDED__rc_t CE_SERVER__recv_all(unsigned char *buffer, uint32_t size);
+EMBEDDED__rc_t CE_SERVER__recv_all(uint8_t *buffer, uint32_t size);
 EMBEDDED__rc_t CE_SERVER__handle_connection();
 
 /* Command handlers */

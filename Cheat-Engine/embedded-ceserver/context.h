@@ -9,9 +9,13 @@
 #define CONTEXT_H_
 
 #ifdef HAS_LINUX_USER_H
+#include <linux/user.h>
 #else
+#include <sys/user.h>
 #endif
 
+#include <sys/ptrace.h>
+#include <linux/socket.h>
 
 #ifdef __aarch64__
 #include <elf.h>
@@ -19,6 +23,7 @@
 
 
 
+#include <stdint.h>
 
 
 #ifdef __i386__
@@ -68,7 +73,7 @@ typedef struct
 {
     /* TODO: not real */
     uint32_t i;
-//  CONTEXT_REGS regs;
+  CONTEXT_REGS regs;
 } CONTEXT, *PCONTEXT;
 
 

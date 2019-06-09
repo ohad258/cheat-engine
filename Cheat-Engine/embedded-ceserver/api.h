@@ -8,6 +8,8 @@
 #ifndef API_H_
 #define API_H_
 
+#include <stdio.h>
+#include <unistd.h>
 #include <stdint.h>
 /* TODO: got to be removed */
 #include <sys/queue.h>
@@ -101,7 +103,7 @@ typedef struct {
 } DebugEvent, *PDebugEvent;
 
 struct DebugEventQueueElement {
-  //TAILQ_ENTRY(DebugEventQueueElement) entries;
+  TAILQ_ENTRY(DebugEventQueueElement) entries;
   DebugEvent de;
 };
 

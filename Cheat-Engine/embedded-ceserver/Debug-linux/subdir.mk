@@ -6,17 +6,26 @@
 C_SRCS += \
 ../ceserver.c \
 ../embedded-linux.c \
+../porthelp.c \
+../threads.c \
+../context.c \
 ../api.c
 
 OBJS += \
 ./ceserver.o \
 ./embedded-linux.o \
-../api.o
+./porthelp.o \
+./threads.o \
+./context.o \
+./api.o
 
 C_DEPS += \
 ./ceserver.d \
 ./embedded-linux.d \
-../api.d
+./porthelp.d \
+./threads.d \
+./context.d \
+./api.d
 
 # Each subdirectory must supply rules for building sources it contributes
 %.o: ../%.c

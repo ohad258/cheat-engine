@@ -21,14 +21,32 @@ void EMBEDDED__log(char *message)
     printf("%s\n", message);
 }
 
-EMBEDDED__rc_t EMBEDDED__recv(unsigned char *buffer, uint32_t max_buffer_size, uint32_t *received_size)
+EMBEDDED__rc_t EMBEDDED__send(uint8_t *buffer, uint32_t buffer_size, uint32_t *sent_size)
+{
+    EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
+    ssize_t send_rc = -1;
+
+    send_rc = send(embedded__client_socket_g, (unsigned char *)buffer, buffer_size, 0);
+    if (-1 == send_rc) {
+        rc = EMBEDDED_SEND_FAILED;
+        goto Exit;
+    }
+
+    *sent_size = send_rc;
+    rc = EMBEDDED_SUCCESS;
+
+Exit:
+    return rc;
+}
+
+EMBEDDED__rc_t EMBEDDED__recv(uint8_t *buffer, uint32_t max_buffer_size, uint32_t *received_size)
 {
     EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
     ssize_t recv_rc = -1;
 
-    recv_rc = recv(embedded__client_socket_g, buffer, max_buffer_size, MSG_WAITALL);
+    recv_rc = recv(embedded__client_socket_g, (unsigned char *)buffer, max_buffer_size, MSG_WAITALL);
     if (-1 == recv_rc) {
-        rc =  EMBEDDED_RECV_FAILED;
+        rc = EMBEDDED_RECV_FAILED;
         goto Exit;
     }
 
@@ -130,10 +148,10 @@ EMBEDDED__rc_t EMBEDDED__get_process_list(ProcessList *process_list)
     DIR *proc_folder = NULL;
     struct dirent *current_file = NULL;
     int pid;
-    char exe_path[200];
+    char exe_path[266];
     char process_path[512];
     uint32_t i = -1;
-    char extra_file[255];
+    char extra_file[270];
     int f;
 
     /* TODO: error handling */
@@ -208,8 +226,7 @@ EMBEDDED__rc_t EMBEDDED__get_process_list(ProcessList *process_list)
     /* TODO: error handling */
     closedir(proc_folder);
 
-    /* TODO: error handling */
-    CreateHandleFromPointer(process_list, htTHSProcess);
+    rc =  EMBEDDED_SUCCESS;
 
 Exit:
     return rc;

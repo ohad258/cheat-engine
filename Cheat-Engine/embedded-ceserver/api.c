@@ -18,10 +18,23 @@
 #include <stdio.h>
 
 
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <errno.h>
+#include <sys/ptrace.h>
+#include <fcntl.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <sys/mman.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <dirent.h>
+#include <stdio.h>
+#include <pthread.h>
 
 #ifndef __x86_64__
 #endif
@@ -104,8 +117,6 @@ void mychildhandler(int signal, struct siginfo *info, void *context)
   int orig_errno = errno;
   WakeDebuggerThread();
   errno = orig_errno;
-
-
 }
 
 int GetDebugPort(HANDLE hProcess)
@@ -3074,236 +3085,6 @@ BOOL Module32First(HANDLE hSnapshot, PModuleListEntry moduleentry)
   }
   else
     return FALSE;
-}
-
-
-HANDLE CreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID)
-{
-
-  if (dwFlags & TH32CS_SNAPPROCESS)
-  {
-    //create a processlist which process32first/process32next will make use of. Not often called so you may make it as slow as you wish
-    int max=2048;
-    PProcessList pl=(PProcessList)malloc(sizeof(ProcessList));
-
-    //printf("Creating processlist\n");
-
-    pl->ReferenceCount=1;
-    pl->processCount=0;
-    pl->processList=(PProcessListEntry)malloc(sizeof(ProcessListEntry)* max);
-
-    DIR *procfolder=opendir("/proc/");
-
-    struct dirent *currentfile;
-
-    while ((currentfile=readdir(procfolder)) != NULL)
-    {
-
-      if (strspn(currentfile->d_name, "1234567890")==strlen(currentfile->d_name))
-      {
-        int pid;
-        char exepath[200];
-        char processpath[512];
-        snprintf(exepath, 200, "/proc/%s/exe", currentfile->d_name);
-        exepath[199]=0; //'should' not be needed in linux, but I read that microsoft is an asshole with this function
-
-        int i=readlink(exepath, processpath, 254);
-        if (i != -1)
-        {
-          char extrafile[255];
-          int f;
-
-          if (i>254)
-            i=254;
-
-          processpath[i]=0;
-
-          snprintf(extrafile, 255, "/proc/%s/cmdline", currentfile->d_name);
-          extrafile[254]=0;
-
-          f=open(extrafile, O_RDONLY);
-          if (i!=-1)
-          {
-            i=read(f, extrafile, 255);
-            if (i>=0)
-              extrafile[i]=0;
-            else
-              extrafile[0]=0;
-
-            strcat(processpath," ");
-            strcat(processpath,extrafile);
-
-            close(f);
-          }
-
-
-          sscanf(currentfile->d_name, "%d", &pid);
-         // printf("%d - %s\n", pid, processpath);
-
-          //add this process to the list
-          pl->processList[pl->processCount].PID=pid;
-          pl->processList[pl->processCount].ProcessName=strdup(processpath);
-
-          pl->processCount++;
-
-          if (pl->processCount>=max)
-          {
-            max=max*2;
-            pl->processList=(PProcessListEntry)realloc(pl->processList, max*sizeof(ProcessListEntry));
-          }
-        }
-
-
-      }
-
-    }
-
-    closedir(procfolder);
-
-    return CreateHandleFromPointer(pl, htTHSProcess);
-  }
-  else
-  if (dwFlags & TH32CS_SNAPMODULE)
-  {
-    //make a list of all the modules loaded by processid th32ProcessID
-    //the module list
-    int max=64;
-    char mapfile[255];
-    FILE *f=NULL;
-    snprintf(mapfile, 255, "/proc/%d/maps", th32ProcessID);
-
-    PModuleList ml=(PModuleList)malloc(sizeof(ModuleList));
-
-    printf("Creating module list for process %d\n", th32ProcessID);
-
-    ml->ReferenceCount=1;
-    ml->moduleCount=0;
-    ml->moduleList=(PModuleListEntry)malloc(sizeof(ModuleListEntry)*max);
-
-
-    f=fopen(mapfile, "r");
-
-
-    if (f)
-    {
-      char s[512];
-      memset(s, 0, 512);
-
-      PModuleListEntry mle=NULL;
-      int phandle=OpenProcess(th32ProcessID);
-      int hasValidModuleSize=0;
-
-
-
-      while (fgets(s, 511, f)) //read a line into s
-      {
-        unsigned long long start, stop;
-        char memoryrange[64],protectionstring[32],modulepath[511];
-        uint32_t magic;
-
-        modulepath[0]='\0';
-        memset(modulepath, 0, 255);
-
-
-        sscanf(s, "%llx-%llx %s %*s %*s %*s %[^\t\n]\n", &start, &stop, protectionstring, modulepath);
-
-        if (ProtectionStringToType(protectionstring)==MEM_MAPPED)
-          continue;
-
-        if (modulepath[0]) //it's something
-        {
-          int i;
-          if (strcmp(modulepath, "[heap]")==0)  //not static enough to mark as a 'module'
-            continue;
-
-          printf("%s\n", modulepath);
-
-          if (strcmp(modulepath, "[vdso]")!=0)  //temporary patch as to not rename vdso, because it is treated differently by the ce symbol loader
-          {
-            for (i=0; modulepath[i]; i++) //strip square brackets from the name (conflicts with pointer notations)
-            {
-              if ((modulepath[i]=='[') || (modulepath[i]==']'))
-                modulepath[i]='_';
-            }
-          }
-
-          if ((mle) && (strcmp(modulepath, mle->moduleName)==0))
-          {
-            //same module as the last entry, adjust the size to encapsule this (may mark non module memory as module memory)
-            if (hasValidModuleSize==0)
-              mle->moduleSize=stop-(mle->baseAddress); //else use the already provided modulesize
-            continue;
-          }
-
-          //new module, or not linkable
-
-//          printf("%llx : %s\n", start, modulepath);
-
-          //check if it starts with ELF
-
-           //printf("tempbuf=%s\n", tempbuf);
-          i=ReadProcessMemory(phandle, (void *)start, &magic, 4);
-          if (i==0)
-          {
-            //printf("%s is unreadable(%llx)\n", modulepath, start);
-            continue; //unreadable
-          }
-
-          //printf("i=%d\n", i);
-
-          if (magic!=0x464c457f) //  7f 45 4c 46
-          {
-            //printf("%s is not an ELF(%llx).  tempbuf=%s\n", modulepath, start, tempbuf);
-            continue; //not an ELF
-          }
-
-          //printf("Found an ELF\n");
-
-          mle=&ml->moduleList[ml->moduleCount];
-          mle->moduleName=strdup(modulepath);
-          mle->baseAddress=start;
-          mle->moduleSize=GetModuleSize(modulepath, 0);
-
-          hasValidModuleSize=mle->moduleSize!=0;
-
-        //  printf("Setting size of %s to %x\n", modulepath, mle->moduleSize);
-
-          ml->moduleCount++;
-
-          if (ml->moduleCount>=max)
-          {
-            //printf("reallocate modulelist\n");
-            max=max*2;
-            ml->moduleList=(PModuleListEntry)realloc(ml->moduleList, max* sizeof(ModuleListEntry));
-          }
-
-
-        }
-        else
-          mle=NULL;
-
-
-
-      }
-
-      CloseHandle(phandle);
-
-      fclose(f);
-
-      return CreateHandleFromPointer(ml, htTHSModule);
-    }
-    else
-    {
-      printf("Failed opening %s\n", mapfile);
-      return 0;
-    }
-
-
-
-  }
-
-
-  return 0;
 }
 
 void CloseHandle(HANDLE h)
