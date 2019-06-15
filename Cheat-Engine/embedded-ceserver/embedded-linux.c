@@ -231,3 +231,34 @@ EMBEDDED__rc_t EMBEDDED__get_process_list(ProcessList *process_list)
 Exit:
     return rc;
 }
+
+EMBEDDED__rc_t EMBEDDED__open_process(uint32_t process_id, ProcessData *process_data)
+{
+    EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
+    /* TODO: stack usage high - should be optimized */
+    unsigned char process_path[100];
+    sprintf(process_path, "/proc/%d/", process_id);
+
+    /* TODO: check if handle already exists */
+    if (chdir(process_path) != 0)
+    {
+        rc = EMBEDDED_FAILED_TO_CHDIR;
+        goto Exit;
+    }
+
+    process_data->path = strdup(process_path);
+
+    sprintf(process_path, "/proc/%d/maps", process_id);
+    process_data->maps = strdup(process_path);
+
+    sprintf(process_path, "/proc/%d/mem", process_id);
+    process_data->mem = open(process_path, O_RDONLY);
+
+    pthread_mutex_init(&process_data->extensionMutex, NULL);
+    pthread_mutex_init(&process_data->extensionMutex, NULL);
+    /* TODO: need to TAILQ_INIT (copy from the original source) */
+
+    rc = EMBEDDED_SUCCESS;
+Exit:
+    return rc;
+}

@@ -14,6 +14,8 @@
 /* TODO: add define to header */
 ProcessListEntry CE_SERVER__process_list_entries_g[CE_SERVER_MAX_PROCESS_AMOUNT] = {0};
 ProcessList CE_SERVER__process_list_g = {0, 0, 0, CE_SERVER__process_list_entries_g};
+ProcessData CE_SERVER__current_process_g = {0};
+
 
 void mylog(char *b, uint32_t s)
 {
@@ -97,7 +99,50 @@ Exit:
     return rc;
 }
 
-EMBEDDED__rc_t CE_SERVER__handle_create_toolhelp32_snapshot()
+EMBEDDED__rc_t ce_server__handle_open_process()
+{
+    EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
+    uint32_t process_id = 0;
+    uint32_t process_handle = -1;
+
+    rc = CE_SERVER__recv_all((uint8_t *)&process_id, sizeof(process_id));
+    ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+
+    memset(&CE_SERVER__current_process_g, 0, sizeof(ProcessData));
+    CE_SERVER__current_process_g.ReferenceCount = 1;
+    CE_SERVER__current_process_g.pid = process_id;
+    CE_SERVER__current_process_g.threadlist=NULL;
+
+    rc = EMBEDDED__open_process(process_id, &CE_SERVER__current_process_g);
+    ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+
+    process_handle = CreateHandleFromPointer(&CE_SERVER__current_process_g, htProcesHandle);
+    rc = CE_SERVER__send_all((uint8_t *)&process_handle, sizeof(process_handle));
+    ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+
+    rc = EMBEDDED_SUCCESS;
+Exit:
+    return rc;
+}
+
+EMBEDDED__rc_t ce_server__handle_get_architecture()
+{
+#ifdef __i386__
+      uint8_t arch = 0;
+#endif
+#ifdef __x86_64__
+      uint8_t arch = 1;
+#endif
+#ifdef __arm__
+      uint8_t arch = 2;
+#endif
+#ifdef __aarch64__
+      uint8_t arch = 3;
+#endif
+    return CE_SERVER__send_all((uint8_t *)&arch, sizeof(arch));
+}
+
+EMBEDDED__rc_t ce_server__handle_create_toolhelp32_snapshot()
 {
     EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
     CeCreateToolhelp32Snapshot params = {0};
@@ -111,7 +156,6 @@ EMBEDDED__rc_t CE_SERVER__handle_create_toolhelp32_snapshot()
         CE_SERVER__process_list_g.ReferenceCount = 1;
         CE_SERVER__process_list_g.processCount = 0;
 
-        /* TODO: send back the handle */
         rc = EMBEDDED__get_process_list(&CE_SERVER__process_list_g);
         ON_EMBEDDED_ERROR_GOTO(rc, Exit);
 
@@ -124,6 +168,7 @@ EMBEDDED__rc_t CE_SERVER__handle_create_toolhelp32_snapshot()
     {
         /* TODO: currently placeholder */
         process_list_handle = CreateHandleFromPointer(0xDDDDDDDD, htTHSProcess);
+        /* TODO: error handling */
         CE_SERVER__send_all((uint8_t *)&process_list_handle, sizeof(process_list_handle));
     }
 
@@ -170,6 +215,7 @@ EMBEDDED__rc_t ce_server__handle_close_handle()
 {
     EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
     uint32_t handle = -1;
+    /* TODO: initialize to unsuccess */
     uint32_t result = 1;
 
     rc = CE_SERVER__recv_all((uint8_t *)&handle, sizeof(handle));
@@ -208,10 +254,16 @@ EMBEDDED__rc_t CE_SERVER__handle_command(uint8_t command_id)
     EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
 
     switch(command_id) {
+        case CMD_OPENPROCESS:
+            EMBEDDED__log("Handling CMD_OPENPROCESS");
+            rc = ce_server__handle_open_process();
+            ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+            break;
+
         case CMD_CREATETOOLHELP32SNAPSHOT:
             EMBEDDED__log("Handling CMD_CREATETOOLHELP32SNAPSHOT");
             /* TODO: lower case it? */
-            rc = CE_SERVER__handle_create_toolhelp32_snapshot();
+            rc = ce_server__handle_create_toolhelp32_snapshot();
             ON_EMBEDDED_ERROR_GOTO(rc, Exit);
             break;
 
@@ -243,6 +295,12 @@ EMBEDDED__rc_t CE_SERVER__handle_command(uint8_t command_id)
             EMBEDDED__log("Handling CMD_MODULE32NEXT");
             /* TODO: should call next */
             rc = ce_server__handle_module_32_first();
+            ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+            break;
+
+        case CMD_GETARCHITECTURE:
+            EMBEDDED__log("Handling CMD_GETARCHITECTURE");
+            rc = ce_server__handle_get_architecture();
             ON_EMBEDDED_ERROR_GOTO(rc, Exit);
             break;
 
