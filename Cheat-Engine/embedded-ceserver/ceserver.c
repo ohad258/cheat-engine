@@ -1,3 +1,4 @@
+/* TODO: fix all warnings */
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -15,6 +16,9 @@
 ProcessListEntry CE_SERVER__process_list_entries_g[CE_SERVER_MAX_PROCESS_AMOUNT] = {0};
 ProcessList CE_SERVER__process_list_g = {0, 0, 0, CE_SERVER__process_list_entries_g};
 ProcessData CE_SERVER__current_process_g = {0};
+
+/* Globals so the code won't use too much stack and avoid using dynamic allocation */
+CeReadProcessMemoryOutput ce_server__read_memory_output_g = {0};
 
 
 void mylog(char *b, uint32_t s)
@@ -92,6 +96,38 @@ EMBEDDED__rc_t ce_server__send_next_process()
 
     size_to_send = sizeof(process_entry) - (CE_SERVER_MAX_PROCESS_NAME_LENGTH * sizeof(uint8_t)) + process_entry.processnamesize;
     rc = CE_SERVER__send_all((uint8_t *)&process_entry, size_to_send);
+    ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+
+    rc = EMBEDDED_SUCCESS;
+Exit:
+    return rc;
+}
+
+EMBEDDED__rc_t ce_server__handle_read_process_memory()
+{
+    EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
+    CeReadProcessMemoryInput read_input = {0};
+    ProcessData *process = NULL;
+    uint32_t size_to_send = 0;
+
+    rc = CE_SERVER__recv_all((uint8_t *)&read_input, sizeof(read_input));
+    ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+
+    process = (ProcessData *)GetPointerFromHandle(read_input.handle);
+
+    rc = EMBEDDED__read_process_memory(process,
+                                       (void *)read_input.address,
+                                       read_input.size,
+                                       &ce_server__read_memory_output_g.read,
+                                       ce_server__read_memory_output_g.buffer);
+;
+    ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+
+    /* TODO: support compression */
+
+    size_to_send = sizeof(ce_server__read_memory_output_g) - (CE_SERVER_MAX_MEMORY_READ_SIZE * sizeof(uint8_t)) + ce_server__read_memory_output_g.read;
+
+    rc = CE_SERVER__send_all((uint8_t *)&ce_server__read_memory_output_g, size_to_send);
     ON_EMBEDDED_ERROR_GOTO(rc, Exit);
 
     rc = EMBEDDED_SUCCESS;
@@ -301,6 +337,12 @@ EMBEDDED__rc_t CE_SERVER__handle_command(uint8_t command_id)
         case CMD_GETARCHITECTURE:
             EMBEDDED__log("Handling CMD_GETARCHITECTURE");
             rc = ce_server__handle_get_architecture();
+            ON_EMBEDDED_ERROR_GOTO(rc, Exit);
+            break;
+
+        case CMD_READPROCESSMEMORY:
+            EMBEDDED__log("Handling CMD_READPROCESSMEMORY");
+            rc = ce_server__handle_read_process_memory();
             ON_EMBEDDED_ERROR_GOTO(rc, Exit);
             break;
 

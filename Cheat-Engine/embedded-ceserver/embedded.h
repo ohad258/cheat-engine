@@ -33,6 +33,8 @@ typedef enum {
     EMBEDDED_BAD_COMMAND_ID,
     EMBEDDED_PROCESSES_AMOUNT_EXCEEDED_MAX,
     EMBEDDED_FAILED_TO_CHDIR,
+    EMBEDDED_FAILED_TO_LOCK_MUTEX_IN_READ,
+    EMBEDDED_FAILED_TO_PTRACE_ATTACH_IN_READ
 } EMBEDDED__rc_t;
 
 /* Logging functions */
@@ -47,4 +49,7 @@ EMBEDDED__rc_t EMBEDDED__recv(uint8_t *buffer, uint32_t max_buffer_size, uint32_
 
 /* WINAPI & commands implementations */
 EMBEDDED__rc_t EMBEDDED__get_process_list(ProcessList *process_list);
+EMBEDDED__rc_t EMBEDDED__open_process(uint32_t process_id, ProcessData *process_data);
+EMBEDDED__rc_t EMBEDDED__read_process_memory(ProcessData *process, void *address, uint32_t size, uint32_t *output_size, uint8_t *read_output);
+
 #endif

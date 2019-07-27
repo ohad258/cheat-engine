@@ -18,6 +18,8 @@
 #define CE_SERVER_MAX_PROCESS_NAME_LENGTH (255)
 /* TODO: no modules currently */
 #define CE_SERVER_MAX_MODULE_NAME_LENGTH (0)
+/* TODO: what is the allowed read size */
+#define CE_SERVER_MAX_MEMORY_READ_SIZE (255)
 
 #define CMD_GETVERSION 0
 #define CMD_CLOSECONNECTION 1
@@ -125,7 +127,8 @@ typedef struct {
 } CeReadProcessMemoryInput, *PCeReadProcessMemoryInput;
 
 typedef struct {
-  int read;
+  uint32_t read;
+  uint8_t buffer[CE_SERVER_MAX_MEMORY_READ_SIZE];
 } CeReadProcessMemoryOutput, *PCeReadProcessMemoryOutput;
 
 typedef struct {

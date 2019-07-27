@@ -16,6 +16,8 @@
 int embedded__server_socket_g = -1;
 int embedded__client_socket_g = -1;
 
+pthread_mutex_t embedded__memory_mutex_g;
+
 void EMBEDDED__log(char *message)
 {
     printf("%s\n", message);
@@ -259,6 +261,50 @@ EMBEDDED__rc_t EMBEDDED__open_process(uint32_t process_id, ProcessData *process_
     /* TODO: need to TAILQ_INIT (copy from the original source) */
 
     rc = EMBEDDED_SUCCESS;
+Exit:
+    return rc;
+}
+
+EMBEDDED__rc_t EMBEDDED__read_process_memory(ProcessData *process, void *address, uint32_t size, uint32_t *output_size, uint8_t *read_output)
+{
+    EMBEDDED__rc_t rc = EMBEDDED_UNINITIALIZED;
+    /* TODO: initialize */
+    uint32_t status;
+    pid_t pid;
+    ssize_t read_rc = -1;
+
+    if (process->isDebugged)
+    {
+      /* TODO: use the debugger specific readProcessMemory implementation (read from original code) */
+    }
+
+    if (pthread_mutex_lock(&embedded__memory_mutex_g) != 0)
+    {
+        rc = EMBEDDED_FAILED_TO_LOCK_MUTEX_IN_READ;
+        goto Exit;
+    }
+
+    if (ptrace(PTRACE_ATTACH, process->pid, 0, 0) != 0)
+    {
+        rc = EMBEDDED_FAILED_TO_PTRACE_ATTACH_IN_READ;
+        goto Cleanup;
+    }
+
+    pid = wait(&status);
+    lseek64(process->mem, address, SEEK_SET);
+
+    read_rc = read(process->mem, read_output, size);
+    if (read_rc == -1)
+    {
+        read_rc = 0;
+    }
+    *output_size = read_rc;
+
+    ptrace(PTRACE_DETACH, process->pid, 0, 0);
+    rc = EMBEDDED_SUCCESS;
+Cleanup:
+    pthread_mutex_unlock(&embedded__memory_mutex_g);
+
 Exit:
     return rc;
 }
